@@ -1,0 +1,24 @@
+.{
+    .name = .enjin,
+    .version = "0.0.0",
+    .fingerprint = 0x177c5d57f8030f10, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zglfw = .{
+            .url = "git+https://github.com/zig-gamedev/zglfw#51003c105d23db378bb59ce415a387b22f1b0892",
+            .hash = "zglfw-0.10.0-dev-zgVDNIy4IQDJNRy4jrP1As-SZxfJpuWhU1iJ-wBab_VD",
+        },
+        .wgpu_native_zig = .{
+            .url = "git+https://github.com/Tired-Fox/wgpu_native_zig#0edbe8e48f81c86da3b895d5f52d270ba08d4874",
+            .hash = "wgpu_native_zig-6.6.0-B9jeDEejAwC_B4fmr50BixNJezrnNYtpgC6QUM8Ef00W",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        // For example...
+        //"LICENSE",
+        //"README.md",
+    },
+}
