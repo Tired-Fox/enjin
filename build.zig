@@ -53,6 +53,19 @@ pub fn build(b: *std.Build) !void {
         exe.root_module.linkLibrary(zglfw.artifact("glfw"));
     }
 
+    switch (target.result.os.tag) {
+        .macos => {
+            // https://github.com/spencrc/hello-triangle-zig-wgpu/blob/main/build.zig#L26
+            exe.root_module.addCSourceFile(.{
+                .file = b.path("lib/meta_layer.m"),
+                .language = .objective_c
+            });
+            exe.root_module.linkFramework("QuartzCore", .{});
+            exe.root_module.linkFramework("Metal", .{});
+        },
+        else => {}
+    }
+
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
