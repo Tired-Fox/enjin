@@ -17,6 +17,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const zmath = b.dependency("zmath", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const wgpu_native = b.dependency("wgpu_native_zig", .{
         .target = target,
         .optimize = optimize,
@@ -25,6 +30,10 @@ pub fn build(b: *std.Build) !void {
     const mod = b.addModule("enjin", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "zglfw", .module = zglfw.module("root") },
+            .{ .name = "wgpu", .module = wgpu_native.module("wgpu") },
+        },
     });
 
     const exe = b.addExecutable(.{
@@ -37,6 +46,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "enjin", .module = mod },
                 .{ .name = "zglfw", .module = zglfw.module("root") },
                 .{ .name = "wgpu", .module = wgpu_native.module("wgpu") },
+                .{ .name = "zmath", .module = zmath.module("root") },
             },
         }),
     });
@@ -50,6 +60,7 @@ pub fn build(b: *std.Build) !void {
     // }
 
     if (target.result.os.tag != .emscripten) {
+        mod.linkLibrary(zglfw.artifact("glfw"));
         exe.root_module.linkLibrary(zglfw.artifact("glfw"));
     }
 
@@ -62,6 +73,13 @@ pub fn build(b: *std.Build) !void {
             });
             exe.root_module.linkFramework("QuartzCore", .{});
             exe.root_module.linkFramework("Metal", .{});
+
+            mod.addCSourceFile(.{
+                .file = b.path("lib/meta_layer.m"),
+                .language = .objective_c
+            });
+            mod.linkFramework("QuartzCore", .{});
+            mod.linkFramework("Metal", .{});
         },
         else => {}
     }

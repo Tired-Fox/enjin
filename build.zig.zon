@@ -9,8 +9,12 @@
             .hash = "zglfw-0.10.0-dev-zgVDNIy4IQDJNRy4jrP1As-SZxfJpuWhU1iJ-wBab_VD",
         },
         .wgpu_native_zig = .{
-            .url = "git+https://github.com/Tired-Fox/wgpu_native_zig#0edbe8e48f81c86da3b895d5f52d270ba08d4874",
-            .hash = "wgpu_native_zig-6.6.0-B9jeDEejAwC_B4fmr50BixNJezrnNYtpgC6QUM8Ef00W",
+            .url = "git+https://github.com/Tired-Fox/wgpu_native_zig#ffc623f198a8525287b1c322881a4c4d53c82169",
+            .hash = "wgpu_native_zig-6.6.0-B9jeDG2pAwCqfylDeGWd33TfJOHMYW8LiJrrOhWzmH2v",
+        },
+        .zmath = .{
+            .url = "git+https://github.com/zig-gamedev/zmath#9e42b04a24c970a297b365f3d3022f92dbf3219d",
+            .hash = "zmath-0.11.0-dev-wjwivTwtAwDOjG2_KGP-HLtHrONfsFfHttalmxFAGVAK",
         },
     },
     .paths = .{
