@@ -1,21 +1,18 @@
 const std = @import("std");
 const glfw = @import("zglfw");
 
-const _input = @import("input.zig");
+const _input = @import("../core/input.zig");
 
 pub const Resize = struct { width: u32, height: u32 };
 
-pub const State = struct {
-    resize: ?Resize = null
-};
-
 arena: std.heap.ArenaAllocator,
 window: *glfw.Window,
-state: *State,
+// Is there another way to get resize event from gflw.FramebufferSizeCallback?
+resized: *?Resize = undefined,
 
 pub fn getResized(self: *const @This()) ?Resize {
-    const value = self.state.resize;
-    self.state.resize = null;
+    const value = self.resized.*;
+    self.resized.* = null;
     return value;
 }
 
@@ -32,12 +29,12 @@ pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [:0]co
     errdefer arena.deinit();
     const alloc = arena.allocator();
 
-    const state = try alloc.create(State);
-    errdefer alloc.destroy(state);
-    state.* = .{};
+    const r = try alloc.create(?Resize);
+    errdefer alloc.destroy(r);
+    r.* = null;
 
     const window = try glfw.Window.create(@bitCast(width), @bitCast(height), title, null, null);
-    window.setUserPointer(@ptrCast(state));
+    window.setUserPointer(@ptrCast(r));
 
     _ = window.setFramebufferSizeCallback(&@This().resize);
     _ = window.setKeyCallback(&_input._onKey);
@@ -49,7 +46,7 @@ pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [:0]co
     return .{
         .arena = arena,
         .window = window,
-        .state = state,
+        .resized = r,
     };
 }
 
@@ -59,6 +56,6 @@ pub fn deinit(self: *const @This()) void {
 }
 
 fn resize(window: *glfw.Window, width: i32, height: i32) callconv(.c) void {
-    const ctx = window.getUserPointer(State).?;
-    ctx.resize = .{ .width = @intCast(width), .height = @intCast(height) };
+    const ctx = window.getUserPointer(?Resize).?;
+    ctx.* = .{ .width = @intCast(width), .height = @intCast(height) };
 }

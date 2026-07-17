@@ -55,3 +55,22 @@ A render component would have something like a mesh and a material. Where the Ma
   - Forward Rendered (Immediate lighting calc): Transparent objects blended together and blended onto deferred buffer
     - Depth test with opaque layer blended with transparent layer
 4. UI
+
+## Texture + View + Sampler
+
+- A `texture` is the GPU memory of the loaded texture data
+- A `view` is a window into that texture
+    - Mip level
+    - Array layer
+    - Cube face
+    - Atlas textures (subset of the texture like a cube map)
+    - Color vs Depth
+    - Compatible format reinterpretation
+- A `sampler` specifies how the gpu should sample the view/texture
+    - nearest or linear filtering
+    - repeat or clamp
+    - mipmap
+    - anisotropic filtering
+    - depth comparison
+
+The gpu resource is the Texture, then the views are created as you need to access parts of the texture, then samplers are cached based on how the views are rendered.

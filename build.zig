@@ -17,12 +17,17 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const wgpu_native = b.dependency("wgpu_native_zig", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const zmath = b.dependency("zmath", .{
         .target = target,
         .optimize = optimize,
     });
 
-    const wgpu_native = b.dependency("wgpu_native_zig", .{
+    const zstbi = b.dependency("zstbi", .{
         .target = target,
         .optimize = optimize,
     });
@@ -33,6 +38,8 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "zglfw", .module = zglfw.module("root") },
             .{ .name = "wgpu", .module = wgpu_native.module("wgpu") },
+            .{ .name = "zmath", .module = zmath.module("root") },
+            .{ .name = "zstbi", .module = zstbi.module("root") },
         },
     });
 
@@ -47,6 +54,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "zglfw", .module = zglfw.module("root") },
                 .{ .name = "wgpu", .module = wgpu_native.module("wgpu") },
                 .{ .name = "zmath", .module = zmath.module("root") },
+                .{ .name = "zstbi", .module = zstbi.module("root") },
             },
         }),
     });

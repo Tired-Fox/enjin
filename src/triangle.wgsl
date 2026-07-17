@@ -1,17 +1,32 @@
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex : texture_2d<f32>;
+
+struct Output {
+    @builtin(position) position : vec4f,
+    @location(0)       color    : vec4f,
+    @location(1)       uv       : vec2f,
+}
+
 @vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
-	var p = vec2f(0.0, 0.0);
-	if (in_vertex_index == 0u) {
-		p = vec2f(-0.5, -0.5);
-	} else if (in_vertex_index == 1u) {
-		p = vec2f(0.5, -0.5);
-	} else {
-		p = vec2f(0.0, 0.5);
-	}
-	return vec4f(p, 0.0, 1.0);
+fn vs_main(
+    @location(0) position : vec4f,
+    @location(3) uv       : vec2f,
+    @location(4) color    : vec4f
+) -> Output {
+    var out : Output;
+
+    out.position = position;
+    out.uv = uv;
+    out.color = color;
+
+    return out;
 }
 
 @fragment
-fn fs_main() -> @location(0) vec4f {
-    return vec4f(0.0, 0.4, 1.0, 1.0);
+fn fs_main(
+    @location(0) color: vec4f,
+    @location(1) uv: vec2f
+) -> @location(0) vec4f {
+    // return color;
+    return textureSample(tex, samp, uv);
 }
