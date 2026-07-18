@@ -61,6 +61,14 @@ pub fn init(device: *wgpu.Device, queue: *wgpu.Queue, kind: Kind, image: Image) 
     };
 }
 
+pub fn getDimension(self: *const @This()) wgpu.TextureDimension {
+    return self.texture.getDimension();
+}
+
+pub fn multisampled(self: *const @This()) bool {
+    return self.texture.getSampleCount() > 1;
+}
+
 pub fn deinit(self: *const @This()) void {
     self.texture.release();
 }

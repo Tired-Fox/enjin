@@ -8,7 +8,11 @@ const stbi = @import("zstbi");
 
 const Image = stbi.Image;
 
+const ResourceManager = @import("resource_manager.zig");
+const Handle = ResourceManager.Handle;
+
 const Surface = @import("surface.zig");
+const Pipeline = @import("pipeline.zig");
 const Texture = @import("texture.zig");
 const Shader = @import("shader.zig");
 const Mesh = @import("mesh.zig");
@@ -21,19 +25,27 @@ io: Io,
 instance: *wgpu.Instance,
 
 initialized: bool = false,
+
 adapter: *wgpu.Adapter = undefined,
 device: *wgpu.Device = undefined,
 queue: *wgpu.Queue = undefined,
 
-// pipeline
-// vertex buffer
-// index buffer
+resources: ResourceManager,
 
-pub fn init(io: Io) @This() {
+pub fn init(io: Io, allocator: std.mem.Allocator) @This() {
     return .{
         .io = io,
+        .resources = ResourceManager.init(io, allocator),
         .instance = wgpu.Instance.create(null).?,
     };
+}
+
+pub fn deinit(self: *@This()) void {
+    self.resources.deinit();
+    self.queue.release();
+    self.device.release();
+    self.adapter.release();
+    self.instance.release();
 }
 
 pub fn createSurface(self: *@This(), window: *const Window) !Surface {
@@ -67,69 +79,77 @@ pub fn createSurface(self: *@This(), window: *const Window) !Surface {
     };
 }
 
-pub fn createShader(
-    self: *const @This(),
-    allocator: std.mem.Allocator,
-    code: []const u8,
-    vs_entry: []const u8,
-    fs_entry: []const u8,
-    options: Shader.Options,
-) !Shader {
+pub fn getOrLoadShader(
+    self: *@This(),
+    pathname: []const u8,
+    bind_groups: []const []const wgpu.BindGroupLayoutEntry,
+) !Handle {
     if (!self.initialized) return error.NoSurfacesInitialized;
 
-    const module = self.device.createShaderModule(&wgpu.shaderModuleWGSLDescriptor(.{
-        .code = code,
-    })) orelse return error.InvalidShaderModule;
-    errdefer module.release();
+    const handle = ResourceManager.getShaderHandle(pathname);
+    if (self.resources.getShader(handle) != null) return handle;
+    _ = try self.resources.loadShader(self, pathname, bind_groups);
 
-    const v = try allocator.alloc(u8, vs_entry.len);
-    errdefer allocator.free(v);
-    @memcpy(v, vs_entry);
-
-    const f = try allocator.alloc(u8, fs_entry.len);
-    @memcpy(f, fs_entry);
-
-    return .{
-        .module = module,
-        .options = options,
-        .vs_entry = v,
-        .fs_entry = f,
-    };
+    return handle;
 }
 
-pub fn createPipeline(
+pub fn getShader(
     self: *const @This(),
-    format: wgpu.TextureFormat,
-    shader: *const Shader,
-    layout: ?*wgpu.PipelineLayout,
-    label: ?[]const u8,
-) !*wgpu.RenderPipeline {
-    const color_targets = &[_]wgpu.ColorTargetState{
-        .{
-            .format = format,
-            .blend = if (shader.options.blend) |blend| &blend else null,
-        },
-    };
+    handle: Handle
+) ?*const Shader {
+    return self.resources.getShader(handle);
+}
 
-    return self.device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = if (label) |l| .fromSlice(l) else .{},
-        .layout = layout,
-        .vertex = .{
-            .module = shader.module,
-            .entry_point = .fromSlice(shader.vs_entry),
-            .buffers = &.{ Mesh.Vertex.vertex_layout() },
-            .buffer_count = 1
-        },
-        .primitive = shader.options.primitive,
-        .fragment = &.{
-            .module = shader.module,
-            .entry_point = .fromSlice(shader.fs_entry),
-            .target_count = color_targets.len,
-            .targets = color_targets.ptr,
-        },
-        .multisample = shader.options.multisample,
-        .depth_stencil = if (shader.options.depth_stencil) |depth| &depth else null
-    }) orelse return error.InvalidPipeline;
+pub fn getShaderBindGroupLayout(
+    self: *const @This(),
+    handle: Handle,
+    index: usize,
+) !*wgpu.BindGroupLayout {
+    if (self.resources.shader_to_bind_group_layouts.get(handle)) |layouts| {
+        const handles = layouts.keys();
+        if (index >= handles.len) return error.OutOfBounds;
+        if (self.resources.bind_group_layouts.get(handles[index])) |layout| {
+            return layout;
+        }
+    }
+
+    return error.OutOfBounds;
+}
+
+pub fn getOrLoadBindGroup(self: *@This(), shader: Handle, index: usize, entries: []const wgpu.BindGroupEntry) !Handle {
+    const key = ResourceManager.getBindGroupHandle(shader, index, entries);
+    if (self.resources.getBindGroup(key) != null) return key;
+    _ = try self.resources.loadBindGroup(self.device, shader, index, entries);
+    return key;
+}
+
+pub fn getBindGroup(self: *@This(), handle: Handle) ?*wgpu.BindGroup {
+    return self.resources.getBindGroup(handle);
+}
+
+/// Note: Shader must have already be created as it will not
+/// be loaded in this function
+pub fn getOrLoadPipeline(
+    self: *@This(),
+    shader_handle: Handle,
+    options: Pipeline.Options,
+) !Handle {
+    if (!self.initialized) return error.NoSurfacesInitialized;
+
+    const shader = self.resources.getShader(shader_handle) orelse return error.ShaderNotLoaded;
+    const handle = ResourceManager.getPipelineHandle(shader_handle, options);
+
+    if (self.resources.getPipeline(handle) != null) return handle;
+    _ = try self.resources.loadPipeline(self, shader_handle, shader, options);
+
+    return handle;
+}
+
+pub fn getPipeline(
+    self: *const @This(),
+    handle: Handle
+) ?*const Pipeline {
+    return self.resources.getPipeline(handle);
 }
 
 pub fn createMesh(self: *const @This(), vertices: []const Mesh.Vertex, indices: []const u32) !Mesh {
@@ -196,13 +216,6 @@ fn requestAdapter(self: *@This(), surface: *wgpu.Surface) !void {
     self.adapter = adapter;
     self.device = device;
     self.queue = queue;
-}
-
-pub fn deinit(self: *const @This()) void {
-    self.queue.release();
-    self.device.release();
-    self.adapter.release();
-    self.instance.release();
 }
 
 const Util = switch (builtin.target.os.tag) {

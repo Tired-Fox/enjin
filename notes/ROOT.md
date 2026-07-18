@@ -74,3 +74,27 @@ A render component would have something like a mesh and a material. Where the Ma
     - depth comparison
 
 The gpu resource is the Texture, then the views are created as you need to access parts of the texture, then samplers are cached based on how the views are rendered.
+
+## Caching
+
+Many of the resources allocated for wgpu can be shared as they are raw data, layouts, and descriptions of how thing should be used or what data is needed.
+
+1. Shader Module (Key: shader source / asset id)
+1. Binding Layout (Key: group index + entries\[deep\])
+1. Pipeline Layout (Key: ordered binding group layouts)
+1. Pipeline (Key: shader + entry points + pipeline layout + primitive state + depth/stencil state + multisample state + blend state + cull mode + topology + front face)
+1. Bind Group (Key: bind group layout + buffer handles & ranges + texture views + samplers + binding order)
+1. Sampler (Key: filter mode + address mode + compare function + lod + anisotropy)
+1. Texture (Key: source/asset id + width,height,depth + format + mip count + usage + sample count + kind)
+    a. Kind: render / storage / sampled
+    b. Underlying image content + intended gpu usage
+1. Mesh (Key: source / asset id + vertex/index hash + vertex layout / format + submesh ranges + LOD level)
+1. Material (Key: shader + params values + textures + samplers + binding schema + render state overrides\[alpha,double-sided,cutoff,etc.\])
+
+## ---
+
+Pipeline is `1` per `shader` and `bind groups`. Bind groups are `1` per `material`. The uniform buffers are shared between materials and an offset is used to get that materials uniform data. The engine will most likely have a presset layout for what is bound and what data is bound where. So the shaders would access those based on that knowledge and the same bind group layout and pipeline layouts can be resused.
+
+When helpers are invoked to update cpu bound data the gpu buffers are updated with offsets in a queue before the next draw/render.
+
+The bind groups have the same locations and binding index for certain textures and samplers. However when one isn't set that bind location is skipped. This avoids wgsl having validation errors because of a null/empty bound texture, sampler, or buffer when it isn't provided while preserving the binding indicies. The layout and the bind group data will be unique based on what is provided and will be cached and rebuilt based on what is added/removed.

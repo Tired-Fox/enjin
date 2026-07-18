@@ -27,7 +27,7 @@ pub fn main(init: std.process.Init) !void {
     defer platform.deinit();
 
     // Stores state like adapter, device, queue, and instance for wgpu
-    var renderer = Renderer.init(io);
+    var renderer = Renderer.init(io, allocator);
     defer renderer.deinit();
 
     // Is there a way to get rid of this allocation?
@@ -40,15 +40,57 @@ pub fn main(init: std.process.Init) !void {
     defer surface.release();
 
     // Per wgsl shader / graph
-    const shader = try renderer.createShader(
-        allocator,
-        // Any wgsl source content as a string
-        @embedFile("triangle.wgsl"),
-        // function annotated with @vertex which is the entry for the vertex shader
-        "vs_main",
-        // function annotated with @fragment which is the entry for the fragment shader
-        "fs_main",
+    const triangle_shader = try renderer.getOrLoadShader(
+        "src/triangle.wgsl",
+        &.{
+            &.{
+                .{
+                    .binding = 0,
+                    .visibility = wgpu.ShaderStages.fragment,
+                    .sampler = .{ .type = .filtering },
+                },
+                .{
+                    .binding = 1,
+                    .visibility = wgpu.ShaderStages.fragment,
+                    .texture = .{
+                        .sample_type = .float,
+                        .view_dimension = .@"2d",
+                        .multisampled = @intFromBool(false),
+                    },
+                },
+            },
+        },
+    );
+
+    const texture = try renderer.createTextureFromFile(.albedo, "cat-in-the-hat-bonk.png");
+    defer texture.deinit();
+
+    const texture_view = texture.texture.createView(&wgpu.TextureViewDescriptor{
+        .label = .fromSlice("Default Texture View"),
+    }) orelse return error.NoTextureView;
+    defer texture_view.release();
+
+    const sampler = renderer.device.createSampler(&wgpu.SamplerDescriptor{
+        .label = .fromSlice("Linear Clamp"),
+        .address_mode_u = .clamp_to_edge,
+        .address_mode_v = .clamp_to_edge,
+        .address_mode_w = .clamp_to_edge,
+        .mag_filter = .linear,
+        .min_filter = .linear,
+        .mipmap_filter = .linear,
+    }) orelse return error.NoSampler;
+    defer sampler.release();
+
+    // Per TextureFormat variant SDR / HDR
+    //
+    // Can lazy build as the output format is needed
+    const pipeline = try renderer.getOrLoadPipeline(
+        triangle_shader,
         .{
+            .label = "Default Pipeline",
+            .format = surface.format(),
+            .vs_entry = "vs_main",
+            .fs_entry = "fs_main",
             .blend = .{
                 .color = .{
                     .operation = .add,
@@ -63,65 +105,16 @@ pub fn main(init: std.process.Init) !void {
             },
         },
     );
-    defer shader.deinit(allocator);
 
-    const texture = try renderer.createTextureFromFile(.albedo, "cat-in-the-hat-bonk.png");
-    defer texture.deinit();
-
-    const texture_view = texture.texture.createView(&wgpu.TextureViewDescriptor{ .label = .fromSlice("Default Texture View") }) orelse return error.NoTextureView;
-    defer texture_view.release();
-
-    const sampler = renderer.device.createSampler(&wgpu.SamplerDescriptor{
-        .label = .fromSlice("Linear Clamp"),
-        .address_mode_u = .clamp_to_edge,
-        .address_mode_v = .clamp_to_edge,
-        .address_mode_w = .clamp_to_edge,
-        .mag_filter = .linear,
-        .min_filter = .linear,
-        .mipmap_filter = .linear,
-    }) orelse return error.NoSampler;
-    defer sampler.release();
-
-
-    const bind_layout = renderer.device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-        .label = .fromSlice("Albedo Texture Bind Group Layout"),
-        .entry_count = 2,
-        .entries = &.{ .{
-            .binding = 0,
-            .visibility = wgpu.ShaderStages.fragment,
-            .sampler = .{ .type = .filtering },
-        }, .{ .binding = 1, .visibility = wgpu.ShaderStages.fragment, .texture = .{
-            .sample_type = .float,
-            .view_dimension = .@"2d",
-            .multisampled = @intFromBool(false),
-        } } },
-    }) orelse return error.NoBindGroupLayout;
-    defer bind_layout.release();
-
-    const pipeline_layout = renderer.device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-        .label = .fromSlice("Default Pipeline Layout"),
-        .bind_group_layout_count = 1,
-        .bind_group_layouts = &.{bind_layout},
-        .immediate_size = 0,
-    });
-
-    // Per TextureFormat variant SDR / HDR
-    //
-    // Can lazy build as the output format is needed
-    const pipeline = try renderer.createPipeline(surface.format(), &shader, pipeline_layout, "Default Pipeline");
-    defer pipeline.release();
-
-    const bind_group = renderer.device.createBindGroup(&wgpu.BindGroupDescriptor{
-        .label = .fromSlice("Albedo Texture Bind Group"),
-        .layout = bind_layout,
-        .entry_count = 2,
-        .entries = &.{
-            wgpu.BindGroupEntry{ .binding = 0, .sampler = sampler },
-            wgpu.BindGroupEntry{ .binding = 1, .texture_view = texture_view },
+    // Currently looks up the layout given a shader and bind group index
+    const bind_group = try renderer.getOrLoadBindGroup(
+        triangle_shader,
+        0,
+        &.{
+            .{ .binding = 0, .sampler = sampler },
+            .{ .binding = 1, .texture_view = texture_view },
         },
-    }) orelse return error.NoBindGroup;
-    defer bind_group.release();
-
+    );
 
     const w: f32 = @floatFromInt(texture.width);
     const h: f32 = @floatFromInt(texture.height);
@@ -148,7 +141,7 @@ pub fn main(init: std.process.Init) !void {
             .{
                 .position = .{ 0.5, -0.5, 0.0, 1.0 },
                 .uv = .{ upper, 1.0 },
-                .color = .{ 0.0, 0.0, 1.0, 1.0 },
+                .color = .{ 1.0, 1.0, 1.0, 1.0 },
             },
         },
         &.{ 0, 1, 2, 0, 2, 3 },
@@ -191,8 +184,8 @@ pub fn main(init: std.process.Init) !void {
             .color_attachments = color_attachments.ptr,
         }).?;
 
-        render_pass.setPipeline(pipeline);
-        render_pass.setBindGroup(0, bind_group, 0, null);
+        render_pass.setPipeline(renderer.getPipeline(pipeline).?.render_pipeline);
+        render_pass.setBindGroup(0, renderer.getBindGroup(bind_group).?, 0, null);
         render_pass.setVertexBuffer(0, triangle_mesh.vertex, 0, triangle_mesh.vertex_size);
         render_pass.setIndexBuffer(triangle_mesh.index, .uint32, 0, triangle_mesh.index_size);
         render_pass.drawIndexed(triangle_mesh.index_count, 1, 0, 0, 0);
